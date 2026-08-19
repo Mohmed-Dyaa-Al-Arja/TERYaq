@@ -11,10 +11,6 @@ from backend.rag.reranker import rerank_results
 from backend.rag.evidence_gate import validate_evidence
 
 
-# ============================================================
-# Helpers
-# ============================================================
-
 def normalize(text: str) -> str:
     text = str(text).lower()
     text = re.sub(r"[^a-z0-9%.\- ]+", " ", text)
@@ -42,22 +38,31 @@ def extract_reference(query: str) -> str | None:
     return None
 
 
-def _reference_regex(reference: str) -> str | None:
-    """Build a bounded, case-insensitive regex for a Figure/Map reference."""
+def _reference_contains_filter(reference: str) -> dict[str, Any] | None:
+    """Build a case-variant Chroma document filter for an exact reference."""
     reference = normalize(reference)
 
     figure_match = re.fullmatch(r"fig\.\s*(\d+)([a-z]?)", reference)
     if figure_match:
         number, suffix = figure_match.groups()
-        return (
-            rf"(?i)\b(?:figure|fig)\.?\s*{re.escape(number)}"
-            rf"{re.escape(suffix)}\b"
-        )
+        forms = [
+            f"Figure {number}{suffix}",
+            f"figure {number}{suffix}",
+            f"Fig. {number}{suffix}",
+            f"fig. {number}{suffix}",
+            f"Fig {number}{suffix}",
+            f"fig {number}{suffix}",
+        ]
+        return {"$or": [{"$contains": form} for form in forms]}
 
     map_match = re.fullmatch(r"map\s*(\d+)([a-z]?)", reference)
     if map_match:
         number, suffix = map_match.groups()
-        return rf"(?i)\bmap\s*{re.escape(number)}{re.escape(suffix)}\b"
+        forms = [
+            f"Map {number}{suffix}",
+            f"map {number}{suffix}",
+        ]
+        return {"$or": [{"$contains": form} for form in forms]}
 
     return None
 
@@ -94,10 +99,6 @@ def reference_matches(
     return False
 
 
-# ============================================================
-# Main Retrieval
-# ============================================================
-
 def retrieve(
     query: str,
     top_k: int = 5,
@@ -117,15 +118,15 @@ def retrieve(
     if not reference:
         return semantic_results
 
-    # Do not scan the entire collection for Figure/Map references. Chroma
-    # supports document-content filtering, so ask the index for only matching
-    # records. This changes the old O(N) client-side scan into a filtered query.
-    reference_regex = _reference_regex(reference)
+    # Avoid collection.get() over every chunk. Chroma supports full-text
+    # document filtering, so only candidate chunks containing the requested
+    # Figure/Map label are loaded.
+    reference_filter = _reference_contains_filter(reference)
     reference_matches_found: list[dict[str, Any]] = []
 
-    if reference_regex:
+    if reference_filter:
         exact_items = collection.get(
-            where_document={"$regex": reference_regex},
+            where_document=reference_filter,
             include=["documents", "metadatas"],
         )
 
@@ -146,7 +147,6 @@ def retrieve(
     final_distances: list[float] = []
     final_ids: list[str] = []
 
-    # Exact reference matches always precede semantic matches.
     for item in reference_matches_found:
         metadata = item["metadata"]
         final_documents.append(item["document"])
@@ -162,7 +162,6 @@ def retrieve(
     for index, (document, metadata, distance) in enumerate(
         zip(semantic_documents, semantic_metadatas, semantic_distances)
     ):
-        # Prefer the exact reference result and avoid duplicate pages.
         page = metadata.get("page")
         if any(existing.get("page") == page for existing in final_metadatas):
             continue
@@ -186,10 +185,6 @@ def retrieve(
         "ids": [final_ids[:top_k]],
     }
 
-
-# ============================================================
-# Grounded Retrieval
-# ============================================================
 
 def retrieve_grounded_evidence(
     query: str,
