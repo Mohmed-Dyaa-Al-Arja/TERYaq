@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 from backend.api.schemas.chat import ChatRequest, ChatResponse
 from backend.database.repositories.chat_repository import save_message
 from backend.memory.manager import build_context
-from backend.rag.visual_answerer import answer_visual_question
+from backend.rag.pipeline import run_pipeline
 
 router = APIRouter(prefix="/api", tags=["Chat"])
 
@@ -15,12 +15,13 @@ def chat(request: ChatRequest):
     try:
         context = build_context(request.session_id)
 
-        result = answer_visual_question(
-            question=request.message,
-        )
+        # The public API must use the same safety-first pipeline as the
+        # standalone RAG entry point. Do not bypass input/output guards.
+        result = run_pipeline(request.message)
 
         answer = result.get("answer", "")
         session_id = context["session_id"]
+        sources = result.get("sources", [])
 
         save_message(
             session_id=session_id,
@@ -33,7 +34,7 @@ def chat(request: ChatRequest):
             session_id=session_id,
             role="assistant",
             content=answer,
-            sources=result.get("sources", []),
+            sources=sources,
         )
 
         return ChatResponse(
@@ -42,7 +43,7 @@ def chat(request: ChatRequest):
             confidence=result.get("confidence", "low"),
             evidence_sufficient=result.get("evidence_sufficient", False),
             refusal=result.get("refusal", False),
-            sources=result.get("sources", []),
+            sources=sources,
             memory=context.get("memory", []),
         )
     except Exception as exc:
