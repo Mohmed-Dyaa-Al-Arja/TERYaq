@@ -5,25 +5,42 @@ from __future__ import annotations
 import re
 
 
+# Keep word boundaries around English phrases so substrings such as
+# "for metastatic" cannot accidentally match "for me".
 _PATIENT_SPECIFIC_PATTERNS = [
-    r"for me",
-    r"my dose",
-    r"dose for me",
-    r"what should i take",
-    r"what medicine should i take",
-    r"which medication should i take",
-    r"which drug should i take",
-    r"should i take",
-    r"can you diagnose me",
-    r"diagnose whether i",
-    r"do i have",
-    r"am i suffering from",
-    r"personally take",
-    r"my treatment",
-    r"for my treatment",
-    r"change my dose",
-    r"increase my dose",
-    r"decrease my dose",
+    r"\bfor me\b",
+    r"\bmy dose\b",
+    r"\bdose for me\b",
+    r"\bwhat should i take\b",
+    r"\bwhat medicine should i take\b",
+    r"\bwhich medication should i take\b",
+    r"\bwhich drug should i take\b",
+    r"\bshould i take\b",
+    r"\bcan you diagnose me\b",
+    r"\bdiagnose whether i\b",
+    r"\bdo i have\b",
+    r"\bam i suffering from\b",
+    r"\bpersonally take\b",
+    r"\bmy treatment\b",
+    r"\bfor my treatment\b",
+    r"\bchange my dose\b",
+    r"\bincrease my dose\b",
+    r"\bdecrease my dose\b",
+]
+
+# Arabic first-person/patient-specific requests. These deliberately focus on
+# personal diagnosis, treatment and dosage rather than general education.
+_ARABIC_PATIENT_SPECIFIC_PATTERNS = [
+    r"جرعتي",
+    r"جرعتي.*(?:ازود|أزود|ازيد|أزيد|اقلل|أقلل|أخفض|أرفع)",
+    r"(?:ازود|أزود|ازيد|أزيد|اقلل|أقلل|أخفض|أرفع).*الجرع",
+    r"(?:اخد|آخد|أخد|اخذ|آخذ|أخذ).*دواء",
+    r"(?:ايه|إيه|ما هو|ماذا).*الدواء.*(?:اخد|آخذ|أخذ)",
+    r"هل.*(?:اخد|آخذ|أخذ).*دواء",
+    r"(?:علاجي|علاجي الشخصي|العلاج بتاعي)",
+    r"(?:اشخصني|شخصني|هل انا مصاب|هل أنا مصاب)",
+    r"(?:ازود|أزود|ازيد|أزيد).*الجرعة",
+    r"(?:أقلل|اقلل|أخفض|اخفض).*الجرعة",
 ]
 
 _MEDICATION_TERMS = [
@@ -37,26 +54,37 @@ _MEDICATION_TERMS = [
 ]
 
 
+def _patient_specific_result(category: str, reason: str) -> dict:
+    return {
+        "safe": False,
+        "category": category,
+        "reason": reason,
+        "message": (
+            "I can only provide general clinical information supported by "
+            "the medical documents. I can’t provide patient-specific "
+            "diagnosis or treatment advice. Please consult a qualified "
+            "healthcare professional."
+        ),
+    }
+
+
 def check_input_safety(question: str) -> dict:
-    """Classify whether the request is allowed to reach generation."""
-    normalized = " ".join(question.lower().split())
+    """Classify whether the request is allowed to reach retrieval/generation."""
+    normalized = " ".join(str(question).lower().split())
 
     for pattern in _PATIENT_SPECIFIC_PATTERNS:
         if re.search(pattern, normalized):
-            return {
-                "safe": False,
-                "category": "patient_specific_medical_request",
-                "reason": (
-                    "The request asks for patient-specific diagnosis, "
-                    "treatment, medication, or dosage guidance."
-                ),
-                "message": (
-                    "I can only provide general clinical information "
-                    "supported by the medical documents. I can’t provide "
-                    "patient-specific diagnosis or treatment advice. "
-                    "Please consult a qualified healthcare professional."
-                ),
-            }
+            return _patient_specific_result(
+                "patient_specific_medical_request",
+                "The request asks for patient-specific diagnosis, treatment, medication, or dosage guidance.",
+            )
+
+    for pattern in _ARABIC_PATIENT_SPECIFIC_PATTERNS:
+        if re.search(pattern, normalized):
+            return _patient_specific_result(
+                "patient_specific_medical_request",
+                "The request appears to ask for patient-specific diagnosis, treatment, medication, or dosage guidance in Arabic.",
+            )
 
     # Explicit first-person medical treatment intent.
     if any(term in normalized for term in _MEDICATION_TERMS):
@@ -71,20 +99,10 @@ def check_input_safety(question: str) -> dict:
                 "my drug",
             ]
         ):
-            return {
-                "safe": False,
-                "category": "patient_specific_medication_request",
-                "reason": (
-                    "The request refers to the user's own medication "
-                    "or treatment."
-                ),
-                "message": (
-                    "I can provide general information from the documents, "
-                    "but I can’t advise you personally about medication or "
-                    "treatment. Please consult a qualified healthcare "
-                    "professional."
-                ),
-            }
+            return _patient_specific_result(
+                "patient_specific_medication_request",
+                "The request refers to the user's own medication or treatment.",
+            )
 
     return {
         "safe": True,
