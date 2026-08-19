@@ -1,0 +1,170 @@
+/* ==========================================================================
+   Upload zone
+   ========================================================================== */
+
+.vv-upload-zone {
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-8);
+  text-align: center;
+  background: var(--color-surface);
+  transition: var(--transition);
+}
+
+.vv-upload-zone:hover {
+  border-color: var(--color-primary);
+  background: rgba(37, 99, 235, 0.04);
+}
+
+/* ==========================================================================
+   Upload zone v2 (Detect page)
+   st.file_uploader() is a real widget, styled to visually join the
+   hand-written `.vv-upload-zone-top` box above it via the marker +
+   adjacent-sibling trick (same pattern as the navbar).
+   ========================================================================== */
+
+.vv-upload-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  background: rgba(37, 99, 235, 0.10);
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.7rem;
+  margin: 0 auto var(--space-4) auto;
+}
+
+.vv-upload-zone-top {
+  border: 2px dashed var(--color-border);
+  border-bottom: none;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--color-surface);
+  padding: var(--space-8) var(--space-8) var(--space-2) var(--space-8);
+  text-align: center;
+}
+
+.vv-upload-zone-top .vv-upload-title {
+  font-weight: 600;
+  font-size: 1.05rem;
+  margin-bottom: 4px;
+}
+
+.vv-upload-zone-top .vv-upload-subtitle {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.vv-upload-zone-marker + div[data-testid="stFileUploader"] section[data-testid="stFileUploaderDropzone"] {
+  border: 2px dashed var(--color-border) !important;
+  border-top: none !important;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg) !important;
+  background: var(--color-surface) !important;
+  padding: var(--space-2) var(--space-8) var(--space-6) var(--space-8) !important;
+  justify-content: center;
+  transition: var(--transition);
+}
+
+.vv-upload-zone-marker + div[data-testid="stFileUploader"] section[data-testid="stFileUploaderDropzone"]:hover {
+  border-color: var(--color-primary) !important;
+}
+
+.vv-upload-zone-marker + div[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzoneInstructions"] {
+  display: none;
+}
+
+.vv-upload-zone-marker + div[data-testid="stFileUploader"] section[data-testid="stFileUploaderDropzone"] button {
+  background: var(--color-primary) !important;
+  border: none !important;
+  color: #FFFFFF !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 10px 22px !important;
+  font-weight: 600 !important;
+}
+
+.vv-upload-zone-marker + div[data-testid="stFileUploader"] section[data-testid="stFileUploaderDropzone"] button:hover {
+  background: var(--color-primary-light) !important;
+}
+
+.vv-upload-legend {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  margin-top: var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.vv-upload-legend strong {
+  color: var(--color-text-primary);
+}
+
+.vv-secure-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  height: 100%;
+}
+
+.vv-secure-notice .vv-secure-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-full);
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--color-success);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 1rem;
+}
+
+.vv-secure-notice strong {
+  display: block;
+  color: var(--color-text-primary);
+  font-size: 0.88rem;
+}
+
+.vv-secure-notice span.vv-secure-desc {
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+}
+
+.vv-tip-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.vv-tip-row:last-child { border-bottom: none; padding-bottom: 0; }
+.vv-tip-row:first-child { padding-top: 0; }
+
+.vv-tip-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(37, 99, 235, 0.3);
+  background: rgba(37, 99, 235, 0.10);
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+

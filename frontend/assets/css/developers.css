@@ -1,0 +1,28 @@
+/* ==========================================================================
+   Developers
+   ========================================================================== */
+
+.developer-card { text-align: center; transition: .3s; height: 100%; }
+.developer-card:hover { transform: translateY(-8px); }
+
+.developer-avatar {
+  width: 90px;
+  height: 90px;
+  margin: auto;
+  margin-bottom: 18px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2563EB, #3B82F6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  font-size: 34px;
+  font-weight: 700;
+  box-shadow: 0 10px 30px rgba(37,99,235,.35);
+}
+
+.developer-name { font-size: 1.1rem; font-weight: 700; color: white; }
+.developer-role { color: var(--color-primary); font-size: .85rem; margin: 8px 0 14px; font-weight: 600; }
+.developer-bio { color: var(--color-text-secondary); min-height: 60px; line-height: 1.6; font-size: .84rem; margin-bottom: 18px; }
+.developer-skills { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+

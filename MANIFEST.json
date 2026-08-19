@@ -1,0 +1,36 @@
+{
+  "embedding": [
+    "backend/embedding/__init__.py",
+    "backend/embedding/config.py",
+    "backend/embedding/model.py",
+    "backend/embedding/vector_store.py"
+  ],
+  "llm": [
+    "backend/llm/__init__.py",
+    "backend/llm/config.py",
+    "backend/llm/client.py",
+    "backend/llm/prompts.py",
+    "backend/llm/schemas.py",
+    "backend/llm/exceptions.py",
+    "backend/llm/image_utils.py"
+  ],
+  "ingestion": [
+    "backend/ingestion/pdf_loader.py",
+    "backend/ingestion/chunker.py",
+    "backend/ingestion/metadata_builder.py",
+    "backend/ingestion/indexer.py"
+  ],
+  "rag": [
+    "backend/rag/retriever.py",
+    "backend/rag/context_builder.py",
+    "backend/rag/prompt_builder.py",
+    "backend/rag/response_generator.py",
+    "backend/rag/pipeline.py"
+  ],
+  "safety": [
+    "backend/safety/input_guard.py",
+    "backend/safety/evidence_validator.py",
+    "backend/safety/claim_verifier.py",
+    "backend/safety/output_guard.py"
+  ]
+}
