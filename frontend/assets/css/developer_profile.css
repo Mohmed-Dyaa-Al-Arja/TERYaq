@@ -1,9 +1,0 @@
-/* ==========================================================================
-   Profile / Team photo
-   ========================================================================== */
-
-.profile-card { text-align: center; transition: .3s; }
-.profile-card:hover { transform: translateY(-6px); }
-.profile-avatar { width: 120px; height: 120px; font-size: 42px; margin-bottom: 24px; }
-.profile-card h2 { color: white; margin-bottom: 8px; }
-
