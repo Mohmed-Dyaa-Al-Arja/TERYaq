@@ -11,10 +11,6 @@ from backend.rag.reranker import rerank_results
 from backend.rag.evidence_gate import validate_evidence
 
 
-# ============================================================
-# Helpers
-# ============================================================
-
 def normalize(text: str) -> str:
     text = str(text).lower()
     text = re.sub(r"[^a-z0-9%.\- ]+", " ", text)
@@ -22,49 +18,51 @@ def normalize(text: str) -> str:
 
 
 def extract_reference(query: str) -> str | None:
-    """
-    Extract explicit references such as:
-
-    Figure 23
-    Fig. 23
-    Fig 23
-    Figure 23A
-    Fig. 23A
-    Map 1a
-    Map 2b
-    """
-
+    """Extract explicit Figure/Map references."""
     q = normalize(query)
-
-    # --------------------------------------------------------
-    # Figure reference
-    # --------------------------------------------------------
 
     figure_match = re.search(
         r"\bfig(?:ure)?\.?\s*(\d+)\s*([a-z]?)\b",
         q,
     )
-
     if figure_match:
-        number = figure_match.group(1)
-        suffix = figure_match.group(2)
-
-        return f"fig. {number}{suffix}".strip()
-
-    # --------------------------------------------------------
-    # Map reference
-    # --------------------------------------------------------
+        return f"fig. {figure_match.group(1)}{figure_match.group(2)}".strip()
 
     map_match = re.search(
         r"\bmap\s*(\d+)\s*([a-z]?)\b",
         q,
     )
-
     if map_match:
-        number = map_match.group(1)
-        suffix = map_match.group(2)
+        return f"map {map_match.group(1)}{map_match.group(2)}".strip()
 
-        return f"map {number}{suffix}".strip()
+    return None
+
+
+def _reference_contains_filter(reference: str) -> dict[str, Any] | None:
+    """Build a case-variant Chroma document filter for an exact reference."""
+    reference = normalize(reference)
+
+    figure_match = re.fullmatch(r"fig\.\s*(\d+)([a-z]?)", reference)
+    if figure_match:
+        number, suffix = figure_match.groups()
+        forms = [
+            f"Figure {number}{suffix}",
+            f"figure {number}{suffix}",
+            f"Fig. {number}{suffix}",
+            f"fig. {number}{suffix}",
+            f"Fig {number}{suffix}",
+            f"fig {number}{suffix}",
+        ]
+        return {"$or": [{"$contains": form} for form in forms]}
+
+    map_match = re.fullmatch(r"map\s*(\d+)([a-z]?)", reference)
+    if map_match:
+        number, suffix = map_match.groups()
+        forms = [
+            f"Map {number}{suffix}",
+            f"map {number}{suffix}",
+        ]
+        return {"$or": [{"$contains": form} for form in forms]}
 
     return None
 
@@ -74,452 +72,163 @@ def reference_matches(
     document: str,
     metadata: dict[str, Any],
 ) -> bool:
-    """
-    Check whether a document is the exact Figure / Map
-    explicitly requested by the user.
-    """
-
+    """Check whether a document represents the exact Figure/Map requested."""
     reference = normalize(reference)
-
-    title = normalize(
-        metadata.get("semantic_title", "")
-    )
-
-    caption = normalize(
-        metadata.get("source_caption", "")
-    )
-
+    title = normalize(metadata.get("semantic_title", ""))
+    caption = normalize(metadata.get("source_caption", ""))
     document_text = normalize(document)
 
-    # ========================================================
-    # FIGURE REFERENCE
-    # ========================================================
-
-    figure_match = re.match(
-        r"^fig\.\s*(\d+)([a-z]?)$",
-        reference,
-    )
-
+    figure_match = re.fullmatch(r"fig\.\s*(\d+)([a-z]?)", reference)
     if figure_match:
-
-        number = figure_match.group(1)
-        suffix = figure_match.group(2)
-
-        # ----------------------------------------------------
-        # Match:
-        #
-        # Fig. 23
-        # Figure 23
-        # Fig 23
-        # Fig. 23A
-        # Figure 23A
-        # ----------------------------------------------------
-
-        pattern = (
-            rf"\b(?:fig(?:ure)?\.?)\s*"
-            rf"{re.escape(number)}"
-            rf"{re.escape(suffix)}\b"
+        number, suffix = figure_match.groups()
+        pattern = rf"\b(?:fig(?:ure)?\.?)\s*{re.escape(number)}{re.escape(suffix)}\b"
+        return any(
+            re.search(pattern, text, flags=re.IGNORECASE)
+            for text in (caption, title, document_text)
         )
 
-        # Caption is strongest.
-        if re.search(pattern, caption):
-            return True
-
-        # Title.
-        if re.search(pattern, title):
-            return True
-
-        # Document text fallback.
-        if re.search(pattern, document_text):
-            return True
-
-        return False
-
-    # ========================================================
-    # MAP REFERENCE
-    # ========================================================
-
-    map_match = re.match(
-        r"^map\s*(\d+)([a-z]?)$",
-        reference,
-    )
-
+    map_match = re.fullmatch(r"map\s*(\d+)([a-z]?)", reference)
     if map_match:
-
-        number = map_match.group(1)
-        suffix = map_match.group(2)
-
-        pattern = (
-            rf"\bmap\s*"
-            rf"{re.escape(number)}"
-            rf"{re.escape(suffix)}\b"
+        number, suffix = map_match.groups()
+        pattern = rf"\bmap\s*{re.escape(number)}{re.escape(suffix)}\b"
+        return any(
+            re.search(pattern, text, flags=re.IGNORECASE)
+            for text in (caption, title, document_text)
         )
-
-        if re.search(pattern, caption):
-            return True
-
-        if re.search(pattern, title):
-            return True
-
-        if re.search(pattern, document_text):
-            return True
-
-        return False
 
     return False
 
-
-# ============================================================
-# Main Retrieval
-# ============================================================
 
 def retrieve(
     query: str,
     top_k: int = 5,
 ) -> dict[str, Any]:
-
     client = get_client()
+    collection = client.get_collection(name=COLLECTION_NAME)
 
-    collection = client.get_collection(
-        name=COLLECTION_NAME
-    )
-
-    query_embedding = embed_texts(
-        [query]
-    )[0]
-
-    # ========================================================
-    # 1. Normal semantic retrieval
-    # ========================================================
+    query_embedding = embed_texts([query])[0]
 
     semantic_results = collection.query(
         query_embeddings=[query_embedding],
         n_results=top_k,
-        include=[
-            "documents",
-            "metadatas",
-            "distances",
-        ],
+        include=["documents", "metadatas", "distances"],
     )
 
-    # ========================================================
-    # 2. Check for explicit Figure / Map reference
-    # ========================================================
-
     reference = extract_reference(query)
-
     if not reference:
         return semantic_results
 
-    # ========================================================
-    # 3. Deterministic reference search
-    #
-    # IMPORTANT:
-    # Do NOT rely on vector similarity to find Figure 23.
-    # Search indexed metadata/document content directly.
-    # ========================================================
+    # Avoid collection.get() over every chunk. Chroma supports full-text
+    # document filtering, so only candidate chunks containing the requested
+    # Figure/Map label are loaded.
+    reference_filter = _reference_contains_filter(reference)
+    reference_matches_found: list[dict[str, Any]] = []
 
-    all_items = collection.get(
-        include=[
-            "documents",
-            "metadatas",
-        ],
-    )
+    if reference_filter:
+        exact_items = collection.get(
+            where_document=reference_filter,
+            include=["documents", "metadatas"],
+        )
 
-    all_documents = all_items.get(
-        "documents",
-        [],
-    )
+        for document, metadata in zip(
+            exact_items.get("documents", []),
+            exact_items.get("metadatas", []),
+        ):
+            if reference_matches(reference, document, metadata):
+                reference_matches_found.append(
+                    {"document": document, "metadata": metadata}
+                )
 
-    all_metadatas = all_items.get(
-        "metadatas",
-        [],
-    )
+    if not reference_matches_found:
+        return semantic_results
 
-    reference_matches_found = []
+    final_documents: list[str] = []
+    final_metadatas: list[dict] = []
+    final_distances: list[float] = []
+    final_ids: list[str] = []
 
-    for document, metadata in zip(
-        all_documents,
-        all_metadatas,
+    for item in reference_matches_found:
+        metadata = item["metadata"]
+        final_documents.append(item["document"])
+        final_metadatas.append(metadata)
+        final_distances.append(0.0)
+        final_ids.append(f"reference_{metadata.get('page', 'unknown')}")
+
+    semantic_documents = semantic_results["documents"][0]
+    semantic_metadatas = semantic_results["metadatas"][0]
+    semantic_distances = semantic_results["distances"][0]
+    semantic_ids = semantic_results.get("ids", [[]])[0]
+
+    for index, (document, metadata, distance) in enumerate(
+        zip(semantic_documents, semantic_metadatas, semantic_distances)
     ):
+        page = metadata.get("page")
+        if any(existing.get("page") == page for existing in final_metadatas):
+            continue
 
-        if reference_matches(
-            reference=reference,
-            document=document,
-            metadata=metadata,
-        ):
+        final_documents.append(document)
+        final_metadatas.append(metadata)
+        final_distances.append(distance)
+        final_ids.append(
+            semantic_ids[index]
+            if index < len(semantic_ids)
+            else f"semantic_{page}"
+        )
 
-            reference_matches_found.append(
-                {
-                    "document": document,
-                    "metadata": metadata,
-                }
-            )
+        if len(final_documents) >= top_k:
+            break
 
-    # ========================================================
-    # 4. If exact Figure / Map was found,
-    #    put it BEFORE semantic results.
-    # ========================================================
+    return {
+        "documents": [final_documents[:top_k]],
+        "metadatas": [final_metadatas[:top_k]],
+        "distances": [final_distances[:top_k]],
+        "ids": [final_ids[:top_k]],
+    }
 
-    if reference_matches_found:
-
-        final_documents = []
-        final_metadatas = []
-        final_distances = []
-        final_ids = []
-
-        # ----------------------------------------------------
-        # Exact reference matches FIRST
-        # ----------------------------------------------------
-
-        for item in reference_matches_found:
-
-            metadata = item["metadata"]
-
-            final_documents.append(
-                item["document"]
-            )
-
-            final_metadatas.append(
-                metadata
-            )
-
-            # Exact reference = perfect distance.
-            final_distances.append(
-                0.0
-            )
-
-            final_ids.append(
-                f"reference_{metadata.get('page', 'unknown')}"
-            )
-
-        # ----------------------------------------------------
-        # Add semantic results
-        # ----------------------------------------------------
-
-        semantic_documents = semantic_results[
-            "documents"
-        ][0]
-
-        semantic_metadatas = semantic_results[
-            "metadatas"
-        ][0]
-
-        semantic_distances = semantic_results[
-            "distances"
-        ][0]
-
-        semantic_ids = semantic_results.get(
-            "ids",
-            [[]],
-        )[0]
-
-        for index, (
-            document,
-            metadata,
-            distance,
-        ) in enumerate(
-            zip(
-                semantic_documents,
-                semantic_metadatas,
-                semantic_distances,
-            )
-        ):
-
-            page = metadata.get("page")
-
-            # Don't duplicate exact reference result.
-            already_added = any(
-                existing.get("page") == page
-                for existing in final_metadatas
-            )
-
-            if already_added:
-                continue
-
-            final_documents.append(
-                document
-            )
-
-            final_metadatas.append(
-                metadata
-            )
-
-            final_distances.append(
-                distance
-            )
-
-            if index < len(semantic_ids):
-
-                final_ids.append(
-                    semantic_ids[index]
-                )
-
-            else:
-
-                final_ids.append(
-                    f"semantic_{page}"
-                )
-
-            if len(final_documents) >= top_k:
-                break
-
-        return {
-            "documents": [
-                final_documents[:top_k]
-            ],
-            "metadatas": [
-                final_metadatas[:top_k]
-            ],
-            "distances": [
-                final_distances[:top_k]
-            ],
-            "ids": [
-                final_ids[:top_k]
-            ],
-        }
-
-    # ========================================================
-    # 5. No exact reference found
-    #    Fall back to semantic retrieval.
-    # ========================================================
-
-    return semantic_results
-
-
-# ============================================================
-# Grounded Retrieval
-# ============================================================
 
 def retrieve_grounded_evidence(
     query: str,
     top_k: int = 5,
     min_score: float = 0.55,
 ) -> list[dict[str, Any]]:
-
-    results = retrieve(
-        query=query,
-        top_k=top_k,
-    )
-
-    # --------------------------------------------------------
-    # Normal reranking
-    # --------------------------------------------------------
-
-    ranked = rerank_results(
-        query=query,
-        results=results,
-    )
-
-    # ========================================================
-    # Explicit Figure / Map Priority
-    # ========================================================
-    #
-    # If the user explicitly asks:
-    #
-    #   Figure 23
-    #   Fig. 23
-    #   Map 1a
-    #
-    # the exact referenced visual MUST remain first.
-    #
-    # We therefore give it an absolute priority score.
-    # ========================================================
+    results = retrieve(query=query, top_k=top_k)
+    ranked = rerank_results(query=query, results=results)
 
     reference = extract_reference(query)
-
     if reference:
-
         exact_results = []
         other_results = []
 
         for result in ranked:
-
             if reference_matches(
                 reference=reference,
                 document=result["document"],
                 metadata=result["metadata"],
             ):
-
-                # ------------------------------------------------
-                # Absolute priority.
-                #
-                # This prevents semantic reranking from moving
-                # another visually similar result above it.
-                # ------------------------------------------------
-
                 result["rerank_score"] = 999.0
-
-                exact_results.append(
-                    result
-                )
-
+                exact_results.append(result)
             else:
+                other_results.append(result)
 
-                other_results.append(
-                    result
-                )
+        ranked = exact_results + other_results
 
-        # Exact Figure / Map first.
-        ranked = (
-            exact_results
-            + other_results
-        )
-
-    # ========================================================
-    # Evidence Gate
-    # ========================================================
-
-    gate = validate_evidence(
-        ranked,
-        min_score=min_score,
-    )
-
+    gate = validate_evidence(ranked, min_score=min_score)
     if not gate["sufficient"]:
         return []
 
-    # ========================================================
-    # Build grounded evidence
-    # ========================================================
-
     evidence = []
-
     for result in gate["evidence"]:
-
         metadata = result["metadata"]
-
         evidence.append(
             {
                 "text": result["document"],
-
-                "document_id": metadata.get(
-                    "document_id",
-                    "N/A",
-                ),
-
-                "page": metadata.get(
-                    "page",
-                    "N/A",
-                ),
-
+                "document_id": metadata.get("document_id", "N/A"),
+                "page": metadata.get("page", "N/A"),
                 "section": metadata.get(
-                    "section",
-                    metadata.get(
-                        "semantic_title",
-                        "N/A",
-                    ),
+                    "section", metadata.get("semantic_title", "N/A")
                 ),
-
-                "chunk_id": result.get(
-                    "chunk_id",
-                    "N/A",
-                ),
-
-                "content_type": metadata.get(
-                    "visual_type",
-                    "visual",
-                ),
-
+                "chunk_id": result.get("chunk_id", "N/A"),
+                "content_type": metadata.get("visual_type", "visual"),
                 "citation": (
                     f"{metadata.get('document_id', 'N/A')}"
                     f" - page {metadata.get('page', 'N/A')}"
