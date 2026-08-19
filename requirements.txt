@@ -11,3 +11,4 @@ chromadb
 fastembed
 pypdf
 pillow
+pymongo
