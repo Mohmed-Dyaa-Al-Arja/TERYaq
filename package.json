@@ -1,6 +1,11 @@
 {
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "dev:all": "concurrently -n BACK,FRONT -c bgBlue,bgGreen \"python -m uvicorn backend.api.main:app --reload\" \"vite --port 8080\""
+  },
   "devDependencies": {
-    "dev:all": "concurrently -n BACK,FRONT -c bgBlue,bgGreen \"cd D:/Teryaq && .venv/Scripts/python.exe -m uvicorn backend.api.main:app --reload\" \"vite --port 8080\""
+    "concurrently": "^9.1.2"
   }
-  
 }
