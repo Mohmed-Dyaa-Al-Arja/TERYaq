@@ -1,3 +1,5 @@
+"""Build searchable chunks from extracted visual evidence."""
+
 from __future__ import annotations
 
 import json
@@ -23,6 +25,8 @@ OUTPUT_FILE = (
 
 
 def load_evidence() -> list[dict[str, Any]]:
+    """Load visual evidence JSON."""
+
     if not INPUT_FILE.exists():
         raise FileNotFoundError(
             f"Visual evidence not found: {INPUT_FILE}"
@@ -31,26 +35,34 @@ def load_evidence() -> list[dict[str, Any]]:
     with open(
         INPUT_FILE,
         "r",
-        encoding="utf-8"
-    ) as f:
-        data = json.load(f)
+        encoding="utf-8",
+    ) as file:
+        data = json.load(file)
 
     if not isinstance(data, list):
         raise ValueError(
-            "visual_extracted_evidence.json must contain a list."
+            "visual_extracted_evidence.json "
+            "must contain a list."
         )
 
     return data
 
 
-def clean_items(items: Any) -> list[str]:
+def clean_items(
+    items: Any,
+) -> list[str]:
+    """Normalize list-like evidence fields."""
+
     if not isinstance(items, list):
         return []
 
-    result = []
+    result: list[str] = []
 
     for item in items:
-        text = str(item).strip()
+
+        text = str(
+            item
+        ).strip()
 
         if text and text not in result:
             result.append(text)
@@ -59,39 +71,68 @@ def clean_items(items: Any) -> list[str]:
 
 
 def build_visual_text(
-    evidence: dict[str, Any]
+    evidence: dict[str, Any],
 ) -> str:
+    """
+    Convert structured visual evidence into
+    searchable natural-language text.
+    """
 
-    parts = []
+    parts: list[str] = []
 
-    title = evidence.get(
-        "semantic_title",
-        ""
-    )
+    # ---------------------------------------------------------
+    # Title
+    # ---------------------------------------------------------
+
+    title = str(
+        evidence.get(
+            "semantic_title",
+            "",
+        )
+    ).strip()
 
     if title:
         parts.append(
             f"Visual title: {title}"
         )
 
-    visual_type = evidence.get(
-        "visual_type",
-        "unknown"
-    )
+    # ---------------------------------------------------------
+    # Visual type
+    # ---------------------------------------------------------
+
+    visual_type = str(
+        evidence.get(
+            "visual_type",
+            "unknown",
+        )
+    ).strip()
 
     parts.append(
         f"Visual type: {visual_type}"
     )
 
-    caption = evidence.get(
-        "source_caption",
-        ""
-    )
+    # ---------------------------------------------------------
+    # Caption
+    # ---------------------------------------------------------
 
-    if caption and caption != "not available":
+    caption = str(
+        evidence.get(
+            "source_caption",
+            "",
+        )
+    ).strip()
+
+    if (
+        caption
+        and caption.lower() != "not available"
+    ):
         parts.append(
             f"Source caption: {caption}"
         )
+
+    # ---------------------------------------------------------
+    # Structured evidence
+    # ---------------------------------------------------------
 
     fields = [
         ("Visible text", "visible_text"),
@@ -108,7 +149,10 @@ def build_visual_text(
     for label, key in fields:
 
         values = clean_items(
-            evidence.get(key, [])
+            evidence.get(
+                key,
+                [],
+            )
         )
 
         if not values:
@@ -123,32 +167,63 @@ def build_visual_text(
                 f"- {value}"
             )
 
-    return "\n".join(parts)
+    return "\n".join(
+        parts
+    )
 
 
 def create_visual_chunk(
-    item: dict[str, Any]
+    item: dict[str, Any],
 ) -> dict[str, Any]:
+    """Create one normalized visual chunk."""
 
     evidence = item.get(
         "visual_evidence",
-        {}
+        {},
     )
 
-    document_id = item.get(
-        "document_id",
-        "unknown"
+    if not isinstance(
+        evidence,
+        dict,
+    ):
+        evidence = {}
+
+    document_id = str(
+        item.get(
+            "document_id",
+            "unknown",
+        )
     )
 
     page = item.get(
         "page",
-        "unknown"
+        "unknown",
     )
 
-    visual_type = evidence.get(
-        "visual_type",
-        "unknown"
+    visual_type = str(
+        evidence.get(
+            "visual_type",
+            "unknown",
+        )
     )
+
+    semantic_title = str(
+        evidence.get(
+            "semantic_title",
+            "",
+        )
+    )
+
+    source_caption = str(
+        evidence.get(
+            "source_caption",
+            "",
+        )
+    )
+
+    # ---------------------------------------------------------
+    # Stable ID
+    # ---------------------------------------------------------
 
     chunk_id = (
         f"{document_id}"
@@ -156,57 +231,72 @@ def create_visual_chunk(
         f"_visual"
     )
 
+    # ---------------------------------------------------------
+    # Searchable text
+    # ---------------------------------------------------------
+
     text = build_visual_text(
         evidence
     )
 
+    # ---------------------------------------------------------
+    # Metadata
+    # ---------------------------------------------------------
+
+    metadata = {
+        "document_id": document_id,
+
+        "document": str(
+            item.get(
+                "document",
+                document_id,
+            )
+        ),
+
+        "page": str(page),
+
+        # Important:
+        # Both source_type and content_type are kept
+        # for backward compatibility.
+        "source_type": "visual",
+        "content_type": "visual",
+
+        "visual_type": visual_type,
+
+        "image_path": str(
+            item.get(
+                "image_path",
+                "",
+            )
+        ),
+
+        "semantic_title": semantic_title,
+
+        "source_caption": source_caption,
+
+        "extraction_model": str(
+            item.get(
+                "extraction_model",
+                "",
+            )
+        ),
+    }
+
     return {
         "chunk_id": chunk_id,
-
         "text": text,
-
-        "metadata": {
-            "document_id": document_id,
-
-            "document": item.get(
-                "document",
-                "unknown"
-            ),
-
-            "page": page,
-
-            "source_type": "visual",
-
-            "visual_type": visual_type,
-
-            "image_path": item.get(
-                "image_path",
-                ""
-            ),
-
-            "semantic_title": evidence.get(
-                "semantic_title",
-                ""
-            ),
-
-            "source_caption": evidence.get(
-                "source_caption",
-                ""
-            ),
-
-            "extraction_model": item.get(
-                "extraction_model",
-                ""
-            ),
-        }
+        "metadata": metadata,
     }
 
 
 def build_visual_chunks() -> list[dict[str, Any]]:
+    """Build all visual chunks."""
 
     evidence_items = load_evidence()
 
-    chunks = []
+    chunks: list[
+        dict[str, Any]
+    ] = []
 
     for item in evidence_items:
 
@@ -224,44 +314,50 @@ def build_visual_chunks() -> list[dict[str, Any]]:
         except Exception as exc:
 
             print(
-                f"Skipping visual item: {exc}"
+                "Skipping visual item: "
+                f"{exc}"
             )
 
     return chunks
 
 
 def save_chunks(
-    chunks: list[dict[str, Any]]
-):
+    chunks: list[dict[str, Any]],
+) -> None:
+    """Save normalized visual chunks."""
 
     OUTPUT_FILE.parent.mkdir(
         parents=True,
-        exist_ok=True
+        exist_ok=True,
     )
 
     with open(
         OUTPUT_FILE,
         "w",
-        encoding="utf-8"
-    ) as f:
+        encoding="utf-8",
+    ) as file:
 
         json.dump(
             chunks,
-            f,
+            file,
             ensure_ascii=False,
-            indent=2
+            indent=2,
         )
 
 
-def main():
+def main() -> None:
 
     print("=" * 70)
-    print("TERYaq - VISUAL CHUNK BUILDER")
+    print(
+        "TERYaq - VISUAL CHUNK BUILDER"
+    )
     print("=" * 70)
 
     chunks = build_visual_chunks()
 
-    save_chunks(chunks)
+    save_chunks(
+        chunks
+    )
 
     print()
     print(

@@ -12,3 +12,7 @@ fastembed
 pypdf
 pillow
 pymongo
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+python-dotenv>=1.0

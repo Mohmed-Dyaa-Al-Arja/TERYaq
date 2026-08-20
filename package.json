@@ -1,0 +1,6 @@
+{
+  "devDependencies": {
+    "dev:all": "concurrently -n BACK,FRONT -c bgBlue,bgGreen \"cd D:/Teryaq && .venv/Scripts/python.exe -m uvicorn backend.api.main:app --reload\" \"vite --port 8080\""
+  }
+  
+}

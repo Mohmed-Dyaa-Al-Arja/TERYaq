@@ -133,6 +133,7 @@ def score_result(
     )
 
     score += document_overlap * 0.10
+
     # ---------------------------------------------------------
     # 4.5 Important phrase / keyword matching
     # ---------------------------------------------------------
@@ -169,6 +170,38 @@ def score_result(
 
             elif phrase in document_normalized:
                 score += 0.12
+
+    # ---------------------------------------------------------
+    # 4.6 Numeric / percentage value matching
+    # ---------------------------------------------------------
+    #
+    # If the query contains a numeric value or percentage
+    # (e.g. "60%", "2 months", "3 years"), boost any document
+    # that also contains that exact value.
+    #
+    # This catches questions like:
+    #   "What is the ≥60% goal for early-stage diagnosis?"
+    #   "What is the KPI of 2 months for Pillar 2?"
+    #
+    # In those cases the title/caption overlap is weak
+    # because the title describes the visual theme, not the
+    # specific metric — but the metric appears in the document
+    # body text.
+    # ---------------------------------------------------------
+
+    numeric_tokens = set(
+        re.findall(r"\d+(?:[%\.]\d+)?", query)
+    )
+
+    if numeric_tokens:
+        numeric_matches = sum(
+            1 for n in numeric_tokens
+            if n in document_normalized
+        )
+        if numeric_matches:
+            score += 0.15 * (
+                numeric_matches / len(numeric_tokens)
+            )
 
     # ---------------------------------------------------------
     # 5. Explicit Figure / Map reference matching

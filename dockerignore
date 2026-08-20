@@ -1,0 +1,33 @@
+# Secrets — never bake these into the image
+.env
+_env
+.env.local
+*.pem
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+node_modules/
+frontend/node_modules/
+dist/
+dist-ssr/
+.output/
+.vinxi/
+.nitro/
+
+# Data that gets mounted as volumes instead
+processed/vectorstore/
+data/pdf/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Git
+.git/
+.gitignore

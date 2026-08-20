@@ -91,8 +91,8 @@ def test_query(query: str):
 if __name__ == "__main__":
 
     queries = [
-         "What does Figure 23 show?",
-        "What are the causes of targets not being met?",
+    "What does Figure 23 show?",
+    "What are the causes of targets not being met?",
     "What does Figure 22 show about three-year survival?",
     "What does the breast cancer incidence map show?",
     "What are the three GBCI pillars?",

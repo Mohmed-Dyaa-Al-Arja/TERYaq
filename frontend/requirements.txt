@@ -1,0 +1,5 @@
+# This project is a JavaScript/TypeScript frontend — runtime dependencies are
+# declared in package.json (install with `bun install` or `npm install`).
+#
+# This file lists the suggested Python packages for the companion backend that
+# serves POST /api/chat. Install with: pip install -r requirements.txt

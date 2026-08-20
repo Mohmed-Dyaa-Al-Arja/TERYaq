@@ -1,0 +1,42 @@
+# ============================================================
+# TERYAQ Backend — FastAPI + RAG pipeline
+# ============================================================
+FROM python:3.11-slim
+
+# System deps needed by chromadb / sentence-transformers / pypdf / pillow
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    libgl1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python deps first (cached layer — only reinstalls when
+# requirements.txt actually changes, not on every code edit).
+# NOTE: this is the project-root requirements.txt (the one that
+# actually lists packages). If your real deps live at
+# backend/requirements.txt instead, change the path below.
+COPY requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+# Pre-download the embedding model into the image so the container
+# doesn't need internet access on every restart / first request.
+ARG EMBEDDING_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('${EMBEDDING_MODEL_NAME}')" \
+    || echo "WARN: could not pre-download embedding model, it will download on first run"
+
+# Now copy the actual application code
+COPY backend ./backend
+
+# Directories that must persist across restarts — mounted as
+# volumes in docker-compose, created here so permissions are sane.
+RUN mkdir -p /app/processed/vectorstore /app/data/pdf
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/docs || exit 1
+
+CMD ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
