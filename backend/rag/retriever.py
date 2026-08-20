@@ -118,9 +118,6 @@ def retrieve(
     if not reference:
         return semantic_results
 
-    # Avoid collection.get() over every chunk. Chroma supports full-text
-    # document filtering, so only candidate chunks containing the requested
-    # Figure/Map label are loaded.
     reference_filter = _reference_contains_filter(reference)
     reference_matches_found: list[dict[str, Any]] = []
 
@@ -191,9 +188,25 @@ def retrieve_grounded_evidence(
     top_k: int = 5,
     min_score: float = 0.55,
 ) -> list[dict[str, Any]]:
+
     results = retrieve(query=query, top_k=top_k)
     ranked = rerank_results(query=query, results=results)
 
+    # --------------------------------------------------------
+    # DEBUG — shows rerank scores to diagnose false refusals
+    # --------------------------------------------------------
+    print("\n[RETRIEVER DEBUG]")
+    for r in ranked[:5]:
+        print(
+            f"  SCORE: {r['rerank_score']:.3f} | "
+            f"DIST: {r['distance']:.3f} | "
+            f"PAGE: {r['metadata'].get('page')} | "
+            f"TITLE: {str(r['metadata'].get('semantic_title', r['metadata'].get('section', '')))[:55]}"
+        )
+
+    # --------------------------------------------------------
+    # Explicit Figure / Map: absolute priority
+    # --------------------------------------------------------
     reference = extract_reference(query)
     if reference:
         exact_results = []
@@ -212,10 +225,37 @@ def retrieve_grounded_evidence(
 
         ranked = exact_results + other_results
 
+    # --------------------------------------------------------
+    # Evidence Gate — adaptive threshold
+    # --------------------------------------------------------
+    # Try primary threshold first (0.55).
+    # If nothing passes, retry at a relaxed threshold (0.35)
+    # before giving up completely.
+    #
+    # This prevents false refusals on questions whose answer
+    # IS present in the knowledge base but whose rerank score
+    # falls just below the primary threshold due to weak
+    # title/caption overlap (e.g. "breast cancer effects",
+    # "how can I know I have breast cancer").
+    # --------------------------------------------------------
+
+    FALLBACK_SCORE = 0.35
+
     gate = validate_evidence(ranked, min_score=min_score)
+
     if not gate["sufficient"]:
+        print(f"  [gate] primary threshold {min_score} failed — retrying at {FALLBACK_SCORE}")
+        gate = validate_evidence(ranked, min_score=FALLBACK_SCORE)
+
+    if not gate["sufficient"]:
+        print("  [gate] fallback threshold also failed — returning empty")
         return []
 
+    print(f"  [gate] passed — {len(gate['evidence'])} evidence chunk(s) accepted")
+
+    # --------------------------------------------------------
+    # Build grounded evidence list
+    # --------------------------------------------------------
     evidence = []
     for result in gate["evidence"]:
         metadata = result["metadata"]

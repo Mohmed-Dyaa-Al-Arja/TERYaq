@@ -128,8 +128,11 @@ def prepare_text_chunks(
 
             "page": str(
                 raw_metadata.get(
-                    "page",
-                    "unknown",
+                    "page_number",       # metadata_builder stores page as page_number
+                    raw_metadata.get(
+                        "page",          # fallback for legacy chunks
+                        "unknown",
+                    ),
                 )
             ),
 
@@ -159,6 +162,13 @@ def prepare_text_chunks(
             "visual_type": str(
                 raw_metadata.get(
                     "visual_type",
+                    "",
+                )
+            ),
+
+            "section": str(
+                raw_metadata.get(
+                    "section",
                     "",
                 )
             ),

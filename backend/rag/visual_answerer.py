@@ -321,71 +321,28 @@ def _format_history(
 # QUERY EXPANSION
 # ============================================================
 
-# Pronouns / vague references that signal the question depends
-# on prior context to be understood by the retriever.
-#
-# NOTE: bare "this" / "that" / "they" / "them" / "their" were
-# removed — they match far too often as ordinary conjunctions
-# ("know THAT i have...", "given THAT...") and trigger needless,
-# noisy expansion. Only keep patterns that are almost always a
-# genuine backward reference.
+# Pronouns and vague references that signal the question
+# depends on prior context to be understood by the retriever.
 _CONTEXT_DEPENDENT = re.compile(
-    r"\b(it|its|the disease|this disease|that disease|"
+    r"(it|its|the disease|this disease|that disease|"
     r"this condition|that condition|the condition|"
-    r"this cancer|that cancer|the cancer)\b",
+    r"this cancer|that cancer|the cancer|"
+    r"this|that|they|them|their)",
     re.IGNORECASE,
 )
-
-# Domain entities we can confidently resolve pronouns to.
-# Matched across the WHOLE history (user + assistant), not just
-# the last user turn — the entity name is far more likely to
-# appear in the assistant's grounded answers than in a user's
-# short follow-up question.
-_ENTITY_PATTERNS = (
-    re.compile(r"\bbreast cancer\b", re.IGNORECASE),
-)
-
-
-def _extract_topic_entity(history: list[dict]) -> str:
-    """
-    Scan the full conversation (both roles) for the most recently
-    mentioned domain entity, e.g. "breast cancer".
-
-    This is far more reliable than reusing the last raw user
-    question: that question may never literally name the topic
-    (e.g. "which age group should be screened with mammography?"
-    never says "breast cancer" — only the assistant's answer does).
-    """
-
-    entity = ""
-
-    for turn in history:
-        content = turn.get("content", "")
-
-        for pattern in _ENTITY_PATTERNS:
-            match = pattern.search(content)
-            if match:
-                entity = match.group(0)
-
-    return entity
 
 
 def _extract_last_user_topic(history: list[dict]) -> str:
     """
-    Fallback: extract the last user message content from history,
-    trimmed at a word boundary. Used only when no known domain
-    entity could be found anywhere in the conversation.
+    Extract the last user message content from history.
+    Used to resolve vague references like "it" or "its".
     """
-
     for turn in reversed(history):
         if turn.get("role") == "user":
             content = turn.get("content", "").strip()
             if content:
-                # Trim at a word boundary instead of mid-word.
-                if len(content) > 80:
-                    content = content[:80].rsplit(" ", 1)[0]
-                return content
-
+                # Keep it short — first 80 chars is enough for context.
+                return content[:80]
     return ""
 
 
@@ -394,33 +351,22 @@ def _expand_query(question: str, history: list[dict]) -> str:
     Expand the retrieval query with topic context from history
     when the question contains vague pronouns or references.
 
-    Prefers a known domain entity (e.g. "breast cancer") found
-    anywhere in the conversation; falls back to the last user
-    question only if no entity can be resolved.
-
-    Returns the original question unchanged if no expansion is
-    needed (no history, or no context-dependent wording).
+    Returns the original question unchanged if no expansion needed.
     """
-
     if not history:
         return question
 
     if not _CONTEXT_DEPENDENT.search(question):
         return question
 
-    topic = _extract_topic_entity(history)
-
-    if not topic:
-        topic = _extract_last_user_topic(history)
+    topic = _extract_last_user_topic(history)
 
     if not topic:
         return question
 
     # Prepend the prior topic so the retriever has enough signal.
     expanded = f"{topic} {question}"
-
     print(f"[query expansion] '{question}' -> '{expanded}'")
-
     return expanded
 
 
@@ -438,13 +384,24 @@ def answer_visual_question(
     history = history or []
 
     # ========================================================
-    # 1. RETRIEVAL
+    # 1. QUERY EXPANSION FROM HISTORY
+    # ========================================================
+    # If the current question contains pronouns or vague
+    # references ("it", "its", "the disease", "this", "that"),
+    # prepend the topic from the last user message so the
+    # retriever can find the right evidence.
+    #
+    # Example:
+    #   history[-2]: "What is breast cancer?"
+    #   question   : "What are its most common symptoms?"
+    #   expanded   : "breast cancer What are its most common symptoms?"
     # ========================================================
 
-    retrieval_query = _expand_query(
-        question=question,
-        history=history,
-    )
+    retrieval_query = _expand_query(question, history)
+
+    # ========================================================
+    # 2. RETRIEVAL
+    # ========================================================
 
     evidence = retrieve_grounded_evidence(
         query=retrieval_query,
